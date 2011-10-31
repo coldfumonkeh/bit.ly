@@ -27,24 +27,34 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	<cfset variables.instance = structNew() />
 	
 	<cffunction name="init" access="public" output="false" returntype="Any" hint="I am the constructor method for the access class">
-		<cfargument name="username" required="true" type="string" hint="The bit.ly account username" />
-		<cfargument name="apikey"	required="true"	type="string" hint="The bit.ly account API key" />
+		<cfargument name="username" 		required="true" 	type="string" 				hint="The bit.ly account username" />
+		<cfargument name="apikey"			required="true"		type="string" 				hint="The bit.ly account API key" />
+		<cfargument name="OAuth_clientID"	required="false"	type="string"	default="" 	hint="Your application's bitly client id." />
 			<cfscript>
 				setusername(arguments.username);
 				setapikey(arguments.apikey);
+				setOAuth_clientID(arguments.OAuth_clientID);
+				variables.instance.oauthEndpoint		=	'https://api-ssl.bitly.com/';
+				variables.instance.oauthAuthorizeURL	=	'https://bitly.com/oauth/authorize';
+				variables.instance.access_token			=	'';
 			</cfscript>
 		<cfreturn this />
 	</cffunction>
 	
 	<!--- MUTATORS --->
-	<cffunction name="setusername" access="private" output="false" hint="I set the bit.ly account username">
-		<cfargument name="username" required="true" type="string" hint="The bit.ly account username" />
+	<cffunction name="setusername" access="private" output="false" hint="I set the bit.ly account username.">
+		<cfargument name="username" required="true" type="string" hint="The bit.ly account username." />
 		<cfset variables.instance.username = arguments.username />
 	</cffunction>
 	
-	<cffunction name="setapikey" access="private" output="false" hint="I set the bit.ly API key">
-		<cfargument name="apikey"	required="true"	type="string" hint="The bit.ly account API key" />
+	<cffunction name="setapikey" access="private" output="false" hint="I set the bit.ly API key.">
+		<cfargument name="apikey"	required="true"	type="string" hint="The bit.ly account API key." />
 		<cfset variables.instance.apikey = arguments.apikey />
+	</cffunction>
+	
+	<cffunction name="setOAuth_clientID" access="private" output="false" hint="I set the OAuth_clientID value.">
+		<cfargument name="client_id"	required="true"	type="string" hint="The bit.ly account API key." />
+		<cfset variables.instance.client_id = arguments.client_id />
 	</cffunction>
 	
 	<!--- ACCESSORS --->
@@ -55,5 +65,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	<cffunction name="getapikey" access="public" output="false" hint="I get the bit.ly account API key">
 		<cfreturn variables.instance.apikey />
 	</cffunction>
-
+	
+	<cffunction name="getOAuth_clientID" access="public" output="false" hint="I get the OAuth_clientID value.">
+		<cfreturn variables.instance.client_id />
+	</cffunction>	
+	
+	<cffunction name="getAuthorisationURL" access="package" output="false" returntype="string" hint="I return the oauthAuthorizeURL value for use in the authenticated OAuth calls.">
+		<cfreturn variables.instance.oauthAuthorizeURL />
+	</cffunction>
+	
+	<cffunction name="getOAuthEndpoint" access="package" output="false" returntype="string" hint="I return the oauthEndpoint value for use in the authenticated OAuth calls.">
+		<cfreturn variables.instance.oauthEndpoint />
+	</cffunction>
+	
 </cfcomponent>

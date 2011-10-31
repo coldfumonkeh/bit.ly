@@ -30,6 +30,14 @@ Share the love and visit Matt’s wishlist: http://www.amazon.co.uk/wishlist/B9P
 Revision history
 ================
 
+31/10/2010 - Version 2.1
+
+	- addition of OAuth 2 restricted functions to access user specific data
+	- updated methods now include:
+		- userClicks, userReferrers, userCountries, userRealtimeLinks
+		- buildAuthorisationLink and getAccessToken to cater for the OAuth 2 protocol interactions
+	- removal of 'authenticate' method / endpoint
+
 13/10/2010 - Version 2.0
 
 	- updated methods now include:
@@ -47,11 +55,12 @@ Revision history
 	<cfset variables.instance = structNew() />
 	
 	<cffunction name="init" access="public" output="false" returntype="Any" hint="I am the constructor method for the bitly Class.">
-		<cfargument name="username" required="true" 	type="string" 									hint="The bitly account username" />
-		<cfargument name="apikey"	required="true"		type="string" 									hint="The bitly account API key" />
-		<cfargument name="format"	required="false" 	type="string" 	default="xml" 					hint="The return format from the API response. JSON or XML." />
-		<cfargument name="parse"	required="false" 	type="boolean"  default="false"					hint="A boolean value to determine if the output data is parsed or returned as a string" />
-		<cfargument name="apiURL"	required="false"	type="string" 	default="http://api.bit.ly/v3/" hint="The URL for the API." />
+		<cfargument name="username" 		required="true" 	type="string" 									hint="The bitly account username" />
+		<cfargument name="apikey"			required="true"		type="string" 									hint="The bitly account API key" />
+		<cfargument name="format"			required="false" 	type="string" 	default="xml" 					hint="The return format from the API response. JSON or XML." />
+		<cfargument name="parse"			required="false" 	type="boolean"  default="false"					hint="A boolean value to determine if the output data is parsed or returned as a string" />
+		<cfargument name="apiURL"			required="false"	type="string" 	default="http://api.bit.ly/v3/" hint="The URL for the API." />
+		<cfargument name="OAuth_clientID"	required="false"	type="string"	default="" 						hint="Your application's bitly client id." />
 			<cfscript>
 				setAccountDetails(arguments.username,arguments.apikey);
 				setReturnFormat(arguments.format);
@@ -63,8 +72,9 @@ Revision history
 	
 	<!--- MUTATORS --->
 	<cffunction name="setAccountDetails" access="private" output="false" returntype="void" hint="I set the bitly account details">
-		<cfargument name="username" required="true" type="string" hint="The bitly account username" />
-		<cfargument name="apikey"	required="true"	type="string" hint="The bitly account API key" />
+		<cfargument name="username" 		required="true" 	type="string" 				hint="The bitly account username" />
+		<cfargument name="apikey"			required="true"		type="string" 				hint="The bitly account API key" />
+		<cfargument name="OAuth_clientID"	required="false"	type="string"	default="" 	hint="Your application's bitly client id." />
 		<cfset variables.instance.bitlyaccount = createObject('component','access').init(argumentCollection=arguments) />
 	</cffunction>
 	
@@ -112,167 +122,89 @@ Revision history
 	<cffunction name="shorten" access="public" output="false" returntype="Any" hint="Given a long URL, I encode it as a shorter URL.">
 		<cfargument name="longURL" 	required="true"  	type="string" 									hint="I am a long URL that you wish to be shortened." />
 		<cfargument name="format"  	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON, XML or TXT." />
-		<cfargument name="domain" 	required="true" 	type="String" default="bit.ly"					hint="I refer to a preferred domain; either bit.ly default or j.mp. This affects the output value of url." />
+		<cfargument name="domain" 	required="true" 	type="String" default="bit.ly"					hint="I refer to a preferred domain; either bit.ly, j.mp, or bitly.com, for users who do NOT have a custom short domain set up with bitly. This affects the output value of url. The default for this parameter is the short domain selected by each user in his/her bitly account settings. Passing a specific domain via this parameter will override the default settings for users who do NOT have a custom short domain set up with bitly. For users who have implemented a custom short domain, bitly will always return short links according to the user's account-level preference." />
 		<cfargument name="x_login" 	required="false" 	type="String" default=""						hint="I am the end-user's login when making requests on behalf of another bit.ly user. This allows application developers to pass along an end user's bit.ly login." />
 		<cfargument name="x_apiKey" required="false" 	type="String" default=""						hint="I am the end-user's apiKey when making requests on behalf of another bit.ly user. This allows application developers to pass along an end user's bit.ly apiKey." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='shorten',param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'shorten?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="expand" access="public" output="false" returntype="Any" hint="Given a bit.ly URL or hash, I return a lengthened URL.">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to be lengthened. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string" 									hint="I am a bit.ly URL hash that you wish to be lengthened. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON, XML or TXT." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='expand',param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'expand?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="validate" access="public" output="false" returntype="Any" hint="Given a bit.ly user login and apiKey, I validate that the pair is active. I return 0 or 1, determining whether or not the user/apikey pair is currently valid.">
 		<cfargument name="x_login" 	required="true" 	type="string" 									hint="The bitly account username" />
 		<cfargument name="x_apiKey"	required="true"		type="string" 									hint="The bitly account API key" />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON, XML or TXT." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='validate',param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'validate?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="clicks" access="public" output="false" returntype="Any" hint="Given a bit.ly URL or hash, I return statistics about the clicks on that link.">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"									hint="I am a bitly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='clicks',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'clicks?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="referrers" access="public" output="false" returntype="Any" hint="I provide a list of referring sites for a specified bit.ly short link, and the number of clicks per referrer.">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"									hint="I am a bitly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='referrers',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'referrers?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="countries" access="public" output="false" returntype="Any" hint="I provide a list of countries from which clicks on a specified bit.ly short link have originated, and the number of clicks per country.">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"									hint="I am a bitly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='countries',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'countries?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="clicksByMinute" access="public" output="false" returntype="Any" hint="For one or more bit.ly links, I provide time series clicks per minute for the last hour in reverse chronological order (most recent to least recent).">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"									hint="I am a bitly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='clicks_by_minute',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'clicks_by_minute?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="clicksByDay" access="public" output="false" returntype="Any" hint="For one or more bit.ly links, I provide time series clicks per day for the last 30 days in reverse chronological order (most recent to least recent).">
 		<cfargument name="shortURL" required="false" 	type="string" 									hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"									hint="I am a bitly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='clicks_by_day',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'clicks_by_day?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="proDomain" access="public" output="false" returntype="Any" hint="I am used to query whether a given short domain is assigned for bitly.Pro, and is consequently a valid shortUrl parameter for other api calls. Keep in mind that bitly.pro domains are restricted to less than 15 characters in length. I return a 0 or 1, determining whether or not this is a current bitly.Pro domain.">
 		<cfargument name="domain" 	required="true"  	type="string" default="" 						hint="I am a short domain (ie: nyti.ms)." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam = '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='bitly_pro_domain',
-											param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'bitly_pro_domain?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="lookup" access="public" output="false" returntype="Any" hint="Given a long URL, I encode it as a shorter URL.">
 		<cfargument name="url" 		required="true"  	type="string" 									hint="I am a long URL that you would like to perform a lookup on. For more than one URL, please provide a comma-delimited list." />
 		<cfargument name="format"  	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON, XML or TXT." />
-			<cfset var strParam 	= '' />
-			<cfset var strResponse 	= '' />
-				<cfscript>
-					strParam 	= buildParamString(arguments);
-					strResponse = makeCall(method='lookup',param=strParam);
-				</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
-	</cffunction>
-		
-	<cffunction name="authenticate" access="public" output="false" hint="I am used by your application to lookup a bit.ly API key for a user given a bit.ly username and password. Access to this endpoint is restricted and must be requested by emailing api@bit.ly. When requesting access include your application login and apiKey, and a description of your use case and an estimated volume of requests.">
-		<cfargument name="x_login" 		required="true" 	type="string" 									hint="The bitly account username or email address." />
-		<cfargument name="x_password"	required="true"		type="string" 									hint="The bitly account password." />
-		<cfargument name="format"		required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var cfhttp 		= '' />
-			<cfset var strParam 	= buildParamString(arguments) />
-				<cfset strParam = strParam &'&login=' & getUserName() & '&apiKey=' & getApiKey() />
-				<cfhttp url="#getAPIURL()#authenticate" method="post" useragent="monkeh bitly agent">
-					<cfhttpparam name="login" 		type="formfield" value="#getUserName()#" />
-					<cfhttpparam name="apiKey" 		type="formfield" value="#getApiKey()#" />
-					<cfhttpparam name="x_login" 	type="formfield" value="#arguments.x_login#" />
-					<cfhttpparam name="x_password" 	type="formfield" value="#arguments.x_password#" />
-					<cfhttpparam name="format" 		type="formfield" value="#arguments.format#" />
-				</cfhttp>
-		<cfreturn handleReturnFormat(cfhttp.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'lookup?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="info" access="public" output="false" returntype="Any" hint="Given a bit.ly URL or hash, I return information about that page, such as the long source URL, associated usernames, and other information.">
 		<cfargument name="shortURL" required="false" 	type="string"  								hint="I am a short URL that you wish to have the stats for. For more than one short URL, please provide a comma-delimited list." />
 		<cfargument name="hash" 	required="false" 	type="string"  								hint="I am a bit.ly URL hash that you wish to have the stats for. For more than one hash, please provide a comma-delimited list." />
 		<cfargument name="format"	required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
-			<cfset var strParam = '' />
-			<cfscript>
-				strParam 	= buildParamString(arguments);
-				strResponse = makeCall(method='info',
-										param=strParam);
-			</cfscript>
-		<cfreturn handleReturnFormat(strResponse.fileContent,arguments.format) />
+			<cfset var strURL = getAPIURL() & 'info?' & buildParamString(arguments) & '&login=' & getUserName() & '&apiKey=' & getApiKey() />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
 	
 	<cffunction name="generateQRCode" access="public" output="false" hint="I take a bit.ly generated URL, and return the binary data of the generated QR Code image.">
@@ -286,24 +218,45 @@ Revision history
 		<cfreturn returnData />
 	</cffunction>
 	
-	<!--- PRIVATE METHODS --->
-	<cffunction name="makeCall" access="private" output="false" returntype="Any" hint="I make the remote call to the bit.ly API.">
-		<cfargument name="method" required="true" 	type="string" 			hint="The name of the method to call from the API." />
-		<cfargument name="param"  required="false" 	type="string" default="" hint="The parameter required for the API call (relevant to the method veing called))" />
-			<cfset var cfhttp 	= '' />
-			<cfset var strURL 	= '' />
-			<cfset var strParam = '' />
-				<cfscript>
-					if(len(arguments.param)) {
-						strParam = arguments.param & '&';
-					}
-					// build the API URL request string
-					strURL = strURL & getAPIURL() & arguments.method & '?' 
-							& strParam &'login=' & getUserName() & '&apiKey=' & getApiKey();             	                
-                </cfscript>
-				<cfhttp url="#strURL#" method="get" />
-		<cfreturn cfhttp />
+	<cffunction name="userClicks" access="public" output="false" returntype="Any" hint="OAuth 2 endpoint that provides the total clicks per day on a user’s bitly links.">
+		<cfargument name="access_token" required="false" 	type="string"  									hint="I am the OAuth access token for specified user." />
+		<cfargument name="days" 		required="false" 	type="string"  									hint="I am an integer value for the number of days (counting backwards from the current day) from which to retrieve data (min:1, max:30, default:7)." />
+		<cfargument name="format"		required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
+			<cfset var strURL 	= 	variables.instance.bitlyaccount.getOAuthEndpoint() & 'v3/user/clicks?' & buildParamString(arguments) />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
 	</cffunction>
+	
+	<cffunction name="userReferrers" access="public" output="false" returntype="Any" hint="OAuth 2 endpoint that provides a list of top referrers (up to 500 per day) for a given user’s bitly links, and the number of clicks per referrer.">
+		<cfargument name="access_token" required="false" 	type="string"  									hint="I am the OAuth access token for specified user." />
+		<cfargument name="days" 		required="false" 	type="string"  									hint="I am an integer value for the number of days (counting backwards from the current day) from which to retrieve data (min:1, max:30, default:7)." />
+		<cfargument name="format"		required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
+			<cfset var strURL 	= 	variables.instance.bitlyaccount.getOAuthEndpoint() & 'v3/user/referrers?' & buildParamString(arguments) />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
+	</cffunction>
+	
+	<cffunction name="userCountries" access="public" output="false" returntype="Any" hint="OAuth 2 endpoint that provides a list of countries from which clicks on a given user’s bitly links are originating, and the number of clicks per country.">
+		<cfargument name="access_token" required="false" 	type="string"  									hint="I am the OAuth access token for specified user." />
+		<cfargument name="days" 		required="false" 	type="string"  									hint="I am an integer value for the number of days (counting backwards from the current day) from which to retrieve data (min:1, max:30, default:7)." />
+		<cfargument name="format"		required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
+			<cfset var strURL 	= 	variables.instance.bitlyaccount.getOAuthEndpoint() & 'v3/user/countries?' & buildParamString(arguments) />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
+	</cffunction>
+	
+	<cffunction name="userRealtimeLinks" access="public" output="false" returntype="Any" hint="OAuth 2 endpoint that provides a given user’s 100 most popular links based on click traffic in the past hour, and the number of clicks per link.">
+		<cfargument name="access_token" required="false" 	type="string"  									hint="I am the OAuth access token for specified user." />
+		<cfargument name="format"		required="false" 	type="string" default="#getReturnFormat()#" 	hint="The return format from the API response. JSON or XML." />
+			<cfset var strURL 	= 	variables.instance.bitlyaccount.getOAuthEndpoint() & 'v3/user/realtime_links?' & buildParamString(arguments) />
+		<cfreturn makeRequest(remoteURI=strURL, format=arguments.format) />
+	</cffunction>
+	
+	<!--- PRIVATE METHODS --->
+	<cffunction name="makeRequest" access="private" output="false" returnType="Any" hint="I make the requests to the remote bit.ly API.">
+		<cfargument name="remoteURI" required="true" 	type="string" hint="I am the remote URI to which the requests are sent." />
+		<cfargument name="format"	 required="false" 	type="string" hint="The return format from the API response. JSON or XML." />
+			<cfset var cfhttp = '' />
+				<cfhttp url="#arguments.remoteURI#" method="get" />
+		<cfreturn handleReturnFormat(cfhttp.fileContent,arguments.format) />
+	</cffunction>	
 	
 	<cffunction name="handleReturnFormat" access="private" output="false" hint="I handle how the data is returned based upon the provided format">
 		<cfargument name="data" 	required="true" 			  type="string" hint="The data returned from the API." />
@@ -378,6 +331,38 @@ Revision history
 					</cfdefaultcase>
 				</cfswitch>
 			<cfreturn strCorrect />
+	</cffunction>
+	
+	<!--- OAuth methods --->
+	<cffunction name="buildAuthorisationLink" access="public" output="false" hint="I build and return the authentication endpoint / URI that you must relocate the user to for authentication and permissions using the OAuth 2 protocol.">
+		<cfargument name="client_id" 		required="true" type="string" default="#variables.instance.bitlyaccount.getOAuth_clientID()#" 	hint="Your application's bitly client id." />
+		<cfargument name="redirect_uri" 	required="true" type="string" 																	hint="The page to which a user will be redirected upon successfully authenticating." />
+			<cfset var strAuthURL = variables.instance.bitlyaccount.getAuthorisationURL() & '?client_id=' & arguments.client_id & '&redirect_uri=' & urlEncodedFormat(arguments.redirect_uri) />
+		<cfreturn strAuthURL />
+	</cffunction>
+	
+	<cffunction name="getAccessToken" access="public" output="false" hint="I return an OAuth access token.">
+		<cfargument name="client_id" 		required="true" type="string" hint="Your application's bitly client id." />
+		<cfargument name="client_secret" 	required="true" type="string" hint="Your application's bitly client secret." />
+		<cfargument name="code" 			required="true" type="string" hint="The OAuth verification code acquired via OAuth’s web authentication protocol" />
+		<cfargument name="redirect_uri" 	required="true" type="string" hint="The page to which a user was redirected upon successfully authenticating." />
+			<cfset var cfhttp 			= 	'' />
+			<cfset var strURL 			= 	variables.instance.bitlyaccount.getOAuthEndpoint() & 'oauth/access_token' />
+			<cfset var stuOAuthResponse = 	{} />
+			<cfset var strReturn		=	'NULL' />
+				<cfhttp url="#strURL#" method="POST" useragent="monkeh bitly agent">
+					<cfhttpparam name="client_id"		type="formfield" value="#arguments.client_id#" />
+					<cfhttpparam name="client_secret"	type="formfield" value="#arguments.client_secret#" />
+					<cfhttpparam name="code"			type="formfield" value="#arguments.code#" />
+					<cfhttpparam name="redirect_uri"	type="formfield" value="#arguments.redirect_uri#" />
+				</cfhttp>
+				<cfif cfhttp.Responseheader['Status_Code'] EQ '200'>
+					<cfloop list="#cfhttp.FileContent#" index="listItem" delimiters="&">	
+						<cfset stuOAuthResponse[listGetAt(listItem, 1, '=')] = listGetAt(listItem, 2, '=') />
+					</cfloop>
+					<cfset strReturn = stuOAuthResponse['access_token'] />
+				</cfif>
+		<cfreturn strReturn />
 	</cffunction>
 	
 </cfcomponent>
